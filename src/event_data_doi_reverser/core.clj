@@ -222,7 +222,21 @@
                         "X-Method" (name (::method ctx))}
                       :body (::doi ctx)})))
 
+(l/defresource server-counts
+  []
+  :allowed-methods [:get]
+  :available-media-types ["application/json"]
+  :handle-ok (fn [ctx]
+    {:items {:total (-> (k/select :items (k/aggregate (count :id) :cnt)) first :cnt)
+             :with-resource-url (-> (k/select :items (k/where (not= :resource_url nil)) (k/aggregate (count :id) :cnt)) first :cnt)}
+     :doi_prefixes {:total (-> (k/select :doi_prefixes (k/aggregate (count :id) :cnt)) first :cnt)}
+     :resource-url-domains {:total (-> (k/select :resource_url_domains (k/aggregate (count :id) :cnt)) first :cnt)}
+     })
+
+      )
+
 (c/defroutes routes
+  (c/GET "/status/counts" [] (server-counts))
   (c/GET "/reverse" [] (server-reverse))
   ;; backward compatibility
   (c/GET "/guess-doi" [] (server-reverse)))
