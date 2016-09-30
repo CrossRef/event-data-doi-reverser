@@ -50,7 +50,7 @@
     (fetch-mdapi-pages from-date until-date "*"))
   
   ([from-date until-date cursor]
-    (let [result (fetch-mdapi-page from-date until-date cursor)
+    (let [result (try-try-again {:sleep 5000 :tries 10} #(fetch-mdapi-page from-date until-date cursor))
           next-token (-> result :message :next-cursor)
           ; We always get a next token. Empty page signals the end of iteration.
           finished (empty? (-> result :message :items))]
