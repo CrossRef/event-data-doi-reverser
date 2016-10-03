@@ -3,12 +3,16 @@
             [robert.bruce :refer [try-try-again]])
   (:import [java.net URLEncoder URL]))
 
+(def headers {
+  "User-Agent" "Crossref Event Data labs@crossref.org (+http://eventdata.crossref.org)"
+  "Referer" "http://eventdata.crossref.org/bot"})
+
 (defn resolve-link-naive
   "Follow a URL to its destination using simple Location headers."
   [url]
   (let [result (try-try-again
                  {:sleep 5000 :tries 10}
-                 #(-> url (http/get {:follow-links true}) deref))
+                 #(-> url (http/get {:follow-links true :headers headers}) deref))
         url (-> result :opts :url)]
     
     (when url

@@ -24,7 +24,10 @@ CREATE TABLE items (
   checked_resource_url_unique BOOLEAN NOT NULL DEFAULT FALSE,
   resource_url_unique BOOLEAN NOT NULL DEFAULT FALSE,
   meta_type INTEGER NOT NULL DEFAULT 0,
-  defer_to_item_id INTEGER REFERENCES items(id)
+  defer_to_item_id INTEGER REFERENCES items(id),
+
+  naive_destination_url VARCHAR(2048) NULL,
+  naive_destination_url_updated DATETIME NULL
 ) ENGINE=InnoDB CHARACTER SET=utf8mb4;
 
 
@@ -35,3 +38,5 @@ CREATE UNIQUE INDEX items_doi ON items(doi(128));
 CREATE INDEX items_resource_url ON items(resource_url(128));
 CREATE INDEX items_checked_resource_url_unique ON items(checked_resource_url_unique);
 CREATE INDEX items_resource_url_unique ON items(resource_url_unique);
+CREATE INDEX items_naive_destination_url_updated ON items(naive_destination_url_updated);
+CREATE INDEX items_resource_url_domain_id ON items(resource_url_domain_id);

@@ -58,3 +58,19 @@
       (if finished
         [result]
         (lazy-seq (cons result (fetch-mdapi-pages from-date until-date next-token)))))))
+
+
+(defn fetch-dois-from-mdapi-page
+  "Fetch lazy sequence of DOIs updated within the two dates."
+  [from-date until-date]
+  (let [pages (fetch-mdapi-pages from-date until-date)
+        ; Pages of DOIs
+        doi-pages (map (fn [page]
+                         (map :DOI (-> page :message :items))) pages)
+        ; Lazy seq of the all DOIs across pages.
+        dois (util/lazy-cat' doi-pages)
+        
+        ; Sometimes the DOI is missing or blank.
+        only-dois (remove empty? dois)]
+    only-dois))
+
