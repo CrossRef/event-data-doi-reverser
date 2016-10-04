@@ -3,7 +3,8 @@
   (:require [clj-time.coerce :as coerce]
             [config.core :refer [env]]
             [korma.core :as k]
-            [korma.db :as kdb])
+            [korma.db :as kdb]
+            [clojure.tools.logging :as log])
   (:gen-class))
 
 (kdb/defdb db (kdb/mysql {:db (:db-name env)
@@ -53,7 +54,7 @@
     :checked_resource_url_unique
     
     ; Is the resource URL unique? If not we can't use the URL or any data deriving from it.
-    :resource_url_unique
+    ; :resource_url_unique ; TODO REMOVE
     
     ; The meta-type of the Item. Useful for disambiguation.
     :meta_type
@@ -71,7 +72,18 @@
 
     ; Naive redirect probe
     ; 0 - not probed, 1 - unreachable, 2 - naive = browser, 3 - naive ≠ browser
-    )
+
+    ; Heuristics
+
+    ; Does the destination URL have duplicates in other Items? If so, this contains the lowest ID of all other duplicates.
+    :h_duplicate_naive_destination_url
+
+    ; Does the resource URL have duplicates in other Items? If so this contains the lowest ID fo other duplicates.
+    :h_duplicate_resource_url
+
+    ; Have we deleted the item?
+    :h_deleted
+)
 
   (k/prepare (fn [{resource_url_updated :resource_url_updated
                      naive_destination_url_updated :naive_destination_url_updated
@@ -139,4 +151,35 @@
       (do
         (ensure-item doi)
         (-> (k/select items (k/where {:doi doi})) first :id)))))
+
+(def page-size 10000)
+
+(defn all-items-id
+  ([] (all-items-id 0))
+  ([id]
+    (log/info "Fetch id" id "limit" page-size)
+    (let [results (k/select items 
+      (k/order :id :ASC) 
+      (k/where (>= :id id)) (k/limit page-size))
+          top-id (-> results last :id)]
+      (if (empty? results)
+        results
+        (lazy-cat results (all-items-id (inc top-id)))))))
+
+(defn all-items-nil-field
+  "Return data set of all items where the named field is not null."
+  ([field] (all-items-nil-field field 0))
+  ([field id]
+    (log/info "Fetch id" id "limit" page-size)
+    (let [results (k/select items 
+      (k/order :id :ASC) 
+      (k/where (>= :id id))
+      (k/where (= field nil))
+      (k/limit page-size))
+          top-id (-> results last :id)]
+      (if (empty? results)
+        results
+        (lazy-cat results (all-items-nil-field field (inc top-id)))))))
+
+
 

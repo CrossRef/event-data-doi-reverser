@@ -162,10 +162,71 @@
         applied (pmap #(sample-naive-redirect-urls-domain (:domain %) (:id %)) domains)]
     (doall applied)))
 
-  ;       )
-  ; (doseq [domain (k/select storage/resource-url-domains)]
-    
-  ;   (sample-naive-redirect-urls-domain (:domain domain) (:id domain))))
+(defn heuristic-duplicate-naive-destination-url
+  "Mark duplicate naïve destination urls with the ID of the lowest one in the group.
+  If there are dupes, this will run once for each, but it's idepotent and cheaper than the alternative."
+  [item]
+  ; May be nil, in which case skip it.
+  (when (:naive_destination_url item)
+    ; Is there more than one? 
+    (let [result (first
+                               (k/select
+                                 :items
+                                   (k/where {:naive_destination_url (:naive_destination_url item)})
+                                    (k/aggregate (count :id) :cnt)
+                                    (k/aggregate (max :id) :min)))]
+      (when (> (:cnt result) 1)
+        (do
+          (log/info "Found duplicate naïve destination url" item)
+          (k/update
+            :items
+            (k/where {:naive_destination_url (:naive_destination_url item)})
+            (k/set-fields {:h_duplicate_naive_destination_url (:min result)})))))))
+
+(def deleted-resource-url "http://www.crossref.org/deleted_DOI.html")
+(defn heristic-all-deleted-items
+  "Mark items that have been deleted."
+  []
+  (k/update
+    :items
+    (k/where {:resource_url deleted-resource-url})
+    (k/set-fields {:h_deleted true})))
+
+
+
+(defn heuristic-duplicate-resource-url
+  "Mark duplicate resource urls with the ID of the lowest one in the group.
+  If there are dupes, this will run once for each, but it's idepotent and cheaper than the alternative."
+  [item]
+  ; May be nil, in which case skip it.
+  (when (:resource_url item)
+    ; Is there more than one? 
+    (let [result (first
+                   (k/select
+                     :items
+                       (k/where {:resource_url (:resource_url item)})
+                        (k/aggregate (count :id) :cnt)
+                        (k/aggregate (max :id) :min)))]
+      (when (> (:cnt result) 1)
+        (do
+          (log/info "Found duplicate resource url" item)
+          (k/update
+            :items
+            (k/where {:resource_url (:resource_url item)})
+            (k/set-fields {:h_duplicate_resource_url (:min result)})))))))
+
+(defn main-derive-heuristics
+  "Calculate various heuristics. Full scan."
+  []
+  ; One-off updates.
+  (heristic-all-deleted-items)
+
+  ; Cover only those that haven't (yet) had the heuristic applied.
+  (doseq [item (storage/all-items-nil-field :h_duplicate_resource_url)]
+    (heuristic-duplicate-resource-url item))
+
+  (doseq [item (storage/all-items-nil-field :h_duplicate_naive_destination_url)]
+    (heuristic-duplicate-naive-destination-url item)))
 
 (defn lookup-item-from-resource-url
   [url]
@@ -207,9 +268,11 @@
     {:items {:total (-> (k/select :items (k/aggregate (count :id) :cnt)) first :cnt)
              :with-resource-url (-> (k/select :items (k/where (not= :resource_url nil)) (k/aggregate (count :id) :cnt)) first :cnt)
              :with-naive-destination (-> (k/select :items (k/where (not= :naive_destination_url_updated nil)) (k/aggregate (count :id) :cnt)) first :cnt)}
+     :item-heuristics {:duplicate_naive_destination_url (-> (k/select :items (k/where (not= :h_duplicate_naive_destination_url nil)) (k/aggregate (count :id) :cnt)) first :cnt)
+                      :duplicate_resource_url (-> (k/select :items (k/where (not= :h_duplicate_resource_url nil)) (k/aggregate (count :id) :cnt)) first :cnt)
+                      :deleted (-> (k/select :items (k/where (= :h_deleted true)) (k/aggregate (count :id) :cnt)) first :cnt)}
      :doi_prefixes {:total (-> (k/select :doi_prefixes (k/aggregate (count :id) :cnt)) first :cnt)}
-     :resource-url-domains {:total (-> (k/select :resource_url_domains (k/aggregate (count :id) :cnt)) first :cnt)}
-     }))
+     :resource-url-domains {:total (-> (k/select :resource_url_domains (k/aggregate (count :id) :cnt)) first :cnt)}}))
 
 (c/defroutes routes
   (c/GET "/status/counts" [] (server-counts))
@@ -235,6 +298,7 @@
       "update-items-many" (main-update-items-many (rest args))
       "update-resource-urls" (main-update-resource-urls)
       "sample-naive-redirect-urls" (main-sample-naive-redirect-urls)
+      "derive-heuristics" (main-derive-heuristics)
 
       "server" (main-run-server)))
   (shutdown-agents))
