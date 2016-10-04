@@ -151,7 +151,7 @@
           (k/update
             storage/items
             (k/set-fields {:naive_destination_url destination-url
-                    :naive_destination_url_updated (clj-time/now)})
+                           :naive_destination_url_updated (clj-time/now)})
             (k/where {:id (:id item)})))))))
 
 (defn main-sample-naive-redirect-urls
@@ -205,7 +205,8 @@
   :available-media-types ["application/json"]
   :handle-ok (fn [ctx]
     {:items {:total (-> (k/select :items (k/aggregate (count :id) :cnt)) first :cnt)
-             :with-resource-url (-> (k/select :items (k/where (not= :resource_url nil)) (k/aggregate (count :id) :cnt)) first :cnt)}
+             :with-resource-url (-> (k/select :items (k/where (not= :resource_url nil)) (k/aggregate (count :id) :cnt)) first :cnt)
+             :with-naive-destination (-> (k/select :items (k/where (not= :naive_destination_url_updated nil)) (k/aggregate (count :id) :cnt)) first :cnt)}
      :doi_prefixes {:total (-> (k/select :doi_prefixes (k/aggregate (count :id) :cnt)) first :cnt)}
      :resource-url-domains {:total (-> (k/select :resource_url_domains (k/aggregate (count :id) :cnt)) first :cnt)}
      }))
