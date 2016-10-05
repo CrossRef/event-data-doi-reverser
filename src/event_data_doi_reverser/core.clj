@@ -5,7 +5,8 @@
             [event-data-doi-reverser.handle :as handle]
             [event-data-doi-reverser.urls :as urls]
             [event-data-doi-reverser.storage :as storage])
-  (:require [clojure.tools.logging :as log])
+  (:require [clojure.tools.logging :as log]
+            [clojure.java.io :as io])
   (:require [clj-time.coerce :as coerce]
             [clj-time.core :as clj-time]
             [config.core :refer [env]]
@@ -17,6 +18,7 @@
             [compojure.route :as r]
             [org.httpkit.server :as server]
             [ring.middleware.params :refer [wrap-params]])
+  (:import [java.io File])
   (:gen-class))
 
 ; Sometimes two DOIs refer to the same work, one each for the abstract and metadata.
@@ -228,6 +230,29 @@
   (doseq [item (storage/all-items-nil-field :h_duplicate_naive_destination_url)]
     (heuristic-duplicate-naive-destination-url item)))
 
+(def export-dir "/tmp/doi-reverser")
+
+(defn export-all-dois
+  "Export ALL DOIs, regardless of status."
+  []
+  (let [output-dir (new File export-dir)
+        all-dois-f (new File output-dir "reverse-all-dois.txt")]
+   (when-not (.isDirectory output-dir)
+    (.mkdirs output-dir))
+   (with-open [out-data (io/writer all-dois-f)]
+    (doseq [item (storage/all-items)]
+      (if-let [doi (:doi item)]
+        (do
+          (.write out-data doi)
+          (.newLine out-data))
+        (log/error "Error: Item without a DOI." item))))))
+
+(defn main-export-all
+  []
+  "Export all artifact files."
+  (export-all-dois)
+  )
+
 (defn lookup-item-from-resource-url
   [url]
   ; TODO look for canonical/primary DOI - follow links and check it's been vetted.
@@ -299,6 +324,7 @@
       "update-resource-urls" (main-update-resource-urls)
       "sample-naive-redirect-urls" (main-sample-naive-redirect-urls)
       "derive-heuristics" (main-derive-heuristics)
+      "export" (main-export-all)
 
       "server" (main-run-server)))
   (shutdown-agents))

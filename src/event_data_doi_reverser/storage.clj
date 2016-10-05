@@ -83,6 +83,7 @@
 
     ; Have we deleted the item?
     :h_deleted
+
 )
 
   (k/prepare (fn [{resource_url_updated :resource_url_updated
@@ -154,8 +155,8 @@
 
 (def page-size 10000)
 
-(defn all-items-id
-  ([] (all-items-id 0))
+(defn all-items
+  ([] (all-items 0))
   ([id]
     (log/info "Fetch id" id "limit" page-size)
     (let [results (k/select items 
@@ -164,7 +165,7 @@
           top-id (-> results last :id)]
       (if (empty? results)
         results
-        (lazy-cat results (all-items-id (inc top-id)))))))
+        (lazy-cat results (all-items (inc top-id)))))))
 
 (defn all-items-nil-field
   "Return data set of all items where the named field is not null."
