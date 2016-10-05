@@ -34,7 +34,6 @@
 (defn fetch-mdapi-page
   "Fetch a page of API results for works in the given date range."
   [from-date until-date cursor]
-  (log/info "Cursor" from-date until-date cursor)
   (let [filter-param (str "from-deposit-date:" from-date ",until-deposit-date:" until-date)
         result @(http/get "http://api.crossref.org/v1/works"
                           {:as :stream
@@ -47,17 +46,22 @@
 (defn fetch-mdapi-pages
   "Lazy sequence of pages for the date range"
   ([from-date until-date]
-    (fetch-mdapi-pages from-date until-date "*"))
+    (fetch-mdapi-pages from-date until-date "*" 0))
   
-  ([from-date until-date cursor]
+  ([from-date until-date cursor current-total]
     (let [result (try-try-again {:sleep 5000 :tries 10} #(fetch-mdapi-page from-date until-date cursor))
           next-token (-> result :message :next-cursor)
           ; We always get a next token. Empty page signals the end of iteration.
-          finished (empty? (-> result :message :items))]
+          items (-> result :message :items)
+          finished (empty? items)
+          num-page-results (count items)
+          total-available (-> result :message :total-results)]
       
+      (log/info "Cursor" from-date until-date cursor ". Got" current-total "/" total-available "=" (float (* 100 (/ current-total total-available))) "%")
+
       (if finished
         [result]
-        (lazy-seq (cons result (fetch-mdapi-pages from-date until-date next-token)))))))
+        (lazy-seq (cons result (fetch-mdapi-pages from-date until-date next-token (+ current-total num-page-results))))))))
 
 
 (defn fetch-dois-from-mdapi-page
