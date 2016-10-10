@@ -27,9 +27,18 @@ Crawl every Item's DOI to find the Resource URL. This will run until it's finish
 Run this once after back-fill.
 Then run every day.
 
-### Sample Eventual URLs per Domain
+### Sample Naïve Destination URLs per Domain
 
-Take a sample of every referrer domain's resource URLs. Record naïve redirects and browser-based redirects. 
+Take a sample of every referrer domain's resource URLs. Record naïve redirects. Takes approx 6 hours for 20 samples on 2000 domains.
+
+     sample-naive-redirect-urls
+
+Run this once after back-fill.
+Then run every day. 
+
+### Sample Browser Destination URLs per Domain
+
+Take a sample of every referrer domain's resource URLs. Record redirects using headless browser.
 
     TODO
 

@@ -29,7 +29,7 @@
 ; 100: 206 seconds
 ; 500: 70 seconds
 ; 1000: 92 seconds
-(def api-page-size 500)
+(def api-page-size 1000)
 
 (defn fetch-mdapi-page
   "Fetch a page of API results for works in the given date range."

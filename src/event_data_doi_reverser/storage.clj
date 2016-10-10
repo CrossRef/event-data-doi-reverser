@@ -1,5 +1,6 @@
 (ns event-data-doi-reverser.storage
-  (:require [crossref.util.doi :as cr-doi])
+  (:require [crossref.util.doi :as cr-doi]
+            [event-data-doi-reverser.util :as util])
   (:require [clj-time.coerce :as coerce]
             [config.core :refer [env]]
             [korma.core :as k]
@@ -28,7 +29,18 @@
   (k/entity-fields
     :id
     :domain
-    ))
+
+    ; Heuristics
+    ; Taken from a sample. Can be null if there is no data.
+
+    ; Proportion of Items with this resource URL where the resource URL is the same as the naïve destination url.
+    :h_proportion_resource_equals_naive_destination_url
+
+    ; Proportion of Items with this resource URL where the resource URL is the same as the browser destination url.
+    :h_proportion_resource_equals_browser_destination_url
+
+    ; Proportion of Items with this resource URL where the link URL is the same as the browser url.
+    :h_proportion_naive_equals_browser_destination_url))
 
 
 (k/defentity items
@@ -66,14 +78,8 @@
     :naive_destination_url
     :naive_destination_url_updated
 
-    ; TODO :naive_redirect
-    ; TODO :browser_redirect
-    ; TODO date also
-
-    ; Naive redirect probe
-    ; 0 - not probed, 1 - unreachable, 2 - naive = browser, 3 - naive ≠ browser
-
     ; Heuristics
+    ; These are denormalized and some are materialized views. But there will be up to 100 million rows.
 
     ; Does the destination URL have duplicates in other Items? If so, this contains the lowest ID of all other duplicates.
     :h_duplicate_naive_destination_url
@@ -84,21 +90,15 @@
     ; Have we deleted the item?
     :h_deleted
 
-)
+    ; Proportion of Items with this resource URL where the resource URL is the same as the browser destination url.
+    :h_resource_equals_browser_destination_url
 
-  (k/prepare (fn [{resource_url_updated :resource_url_updated
-                     naive_destination_url_updated :naive_destination_url_updated
-                     :as obj}]
-                 (assoc obj
-                  :resource_url_updated (when resource_url_updated (coerce/to-sql-date resource_url_updated))
-                  :naive_destination_url_updated (when naive_destination_url_updated (coerce/to-sql-date naive_destination_url_updated)))))
-  
-  (k/transform (fn [{resource_url_updated :resource_url_updated
-                     naive_destination_url_updated :naive_destination_url_updated
-                     :as obj}]
-                 (assoc obj
-                  :resource_url_updated (when resource_url_updated (str (coerce/from-sql-date resource_url_updated)))
-                  :naive_destination_url_updated (when naive_destination_url_updated (str (coerce/from-sql-date naive_destination_url_updated)))))))
+    ; Proportion of Items with this resource URL where the link URL is the same as the browser url.
+    :h_naive_equals_browser_destination_url)
+
+
+  (k/prepare (partial util/map-keys {:resource_url_updated coerce/to-sql-date :naive_destination_url_updated coerce/to-sql-date}))
+  (k/transform (partial util/map-keys {:resource_url_updated coerce/from-sql-date :naive_destination_url_updated coerce/from-sql-date})))
 
 
 ; Cache of prefix -> prefix id.
@@ -181,6 +181,3 @@
       (if (empty? results)
         results
         (lazy-cat results (all-items-nil-field field (inc top-id)))))))
-
-
-

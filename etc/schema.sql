@@ -7,7 +7,10 @@ CREATE UNIQUE INDEX doi_prefixes_prefix ON doi_prefixes(prefix);
 
 CREATE TABLE resource_url_domains (
   id INTEGER PRIMARY KEY NOT NULL AUTO_INCREMENT,
-  domain VARCHAR(1024)
+  domain VARCHAR(1024),
+  h_proportion_resource_equals_naive_destination_url FLOAT NULL DEFAULT NULL
+  h_proportion_resource_equals_browser_destination_url FLOAT NULL DEFAULT NULL
+
 ) ENGINE=InnoDB CHARACTER SET=utf8mb4;
 
 CREATE UNIQUE INDEX resource_url_domains_domain ON resource_url_domains(domain(128));
@@ -32,7 +35,9 @@ CREATE TABLE items (
   -- heuristics
   h_duplicate_naive_destination_url INTEGER NULL,
   h_duplicate_resource_url INTEGER NULL,
-  h_deleted BOOLEAN NOT NULL DEFAULT FALSE
+  h_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  h_resource_equals_browser_destination_url BOOLEAN NULL DEFAULT NULL,
+  h_naive_equals_browser_destination_url  BOOLEAN NULL DEFAULT NULL,
 
 ) ENGINE=InnoDB CHARACTER SET=utf8mb4;
 
@@ -47,3 +52,4 @@ CREATE INDEX items_resource_url_unique ON items(resource_url_unique);
 CREATE INDEX items_naive_destination_url_updated ON items(naive_destination_url_updated);
 CREATE INDEX items_resource_url_domain_id ON items(resource_url_domain_id);
 CREATE INDEX items_naive_destination_url ON items(naive_destination_url(512));
+CREATE INDEX items_resource_equals_browser_destination_url ON items(h_resource_equals_browser_destination_url);

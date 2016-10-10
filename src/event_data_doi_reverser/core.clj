@@ -46,13 +46,13 @@
       (try 
         (let [[item async-response] request
               [resource-url alias-doi] @async-response]
+
           ; We get either a URL or an alias-doi. Do different things in each case.
           (cond 
             resource-url (let [; If resource URL doesn't parse, can be nil.
                                ; This can happen in error cases e.g. "10.5992/ajcs-d-12-00011.1" -> "ajcsonline.org/doi/abs/10.5992/AJCS-D-12-00011.1" has no scheme.
                                resource-url-domain (urls/try-get-host resource-url)
                                resource-url-domain-id (when resource-url-domain (storage/get-resource-url-domain-id resource-url-domain))]
-                            ; (log/info "DOI resource" (:doi item) "->" resource-url)
                             
                             ; Item already exists in the database.
                             (k/update storage/items (k/where {:id (:id item)})
@@ -88,7 +88,7 @@
 ; main
 
 (defn main-update-items
-  "Ingest all items updated in the given range"
+  "Ingest all items from the Crossref Metadata API deposited/updated in the given range"
   [from-date until-date]
   (log/info "Main ingest" from-date until-date)
   (let [counter (atom 0)]
@@ -99,7 +99,7 @@
         (log/info "Inserted" @counter "items")))))
 
 (defn main-update-items-many
-  "Ingest all items for the given date strings in parallel."
+  "Ingest all items from the Crossref Metadata API for the given date strings in parallel."
   [dates]
   (let [threads (map #(new Thread (fn [] (main-update-items % %))) dates)]
     (doseq [thread threads]
@@ -118,12 +118,6 @@
       (log/info "Updated" num-updated "items' resource URL.")    
     (if-not (zero? num-updated)
       (recur)))))
-
-(defn main-scan-unique-resource-urls
-  "Scan all resource URLs to check that they're unique."
-  []
-  ; TODO 
-  )
 
 ; This many Item samples per domain for probing naive resource URLs.
 (def naive-sample-size 20)
@@ -164,7 +158,7 @@
         applied (pmap #(sample-naive-redirect-urls-domain (:domain %) (:id %)) domains)]
     (doall applied)))
 
-(defn heuristic-duplicate-naive-destination-url
+(defn heuristic-item-duplicate-naive-destination-url
   "Mark duplicate naïve destination urls with the ID of the lowest one in the group.
   If there are dupes, this will run once for each, but it's idepotent and cheaper than the alternative."
   [item]
@@ -172,11 +166,11 @@
   (when (:naive_destination_url item)
     ; Is there more than one? 
     (let [result (first
-                               (k/select
-                                 :items
-                                   (k/where {:naive_destination_url (:naive_destination_url item)})
-                                    (k/aggregate (count :id) :cnt)
-                                    (k/aggregate (max :id) :min)))]
+                   (k/select
+                     :items
+                       (k/where {:naive_destination_url (:naive_destination_url item)})
+                        (k/aggregate (count :id) :cnt)
+                        (k/aggregate (max :id) :min)))]
       (when (> (:cnt result) 1)
         (do
           (log/info "Found duplicate naïve destination url" item)
@@ -186,7 +180,7 @@
             (k/set-fields {:h_duplicate_naive_destination_url (:min result)})))))))
 
 (def deleted-resource-url "http://www.crossref.org/deleted_DOI.html")
-(defn heristic-all-deleted-items
+(defn heuristic-item-all-deleted
   "Mark items that have been deleted."
   []
   (k/update
@@ -194,9 +188,21 @@
     (k/where {:resource_url deleted-resource-url})
     (k/set-fields {:h_deleted true})))
 
+(defn heuristic-item-resource-equals-naive
+  "Mark items where the resource URL is equal to the naïve destination URL"
+  []
+  (k/update
+    :items
+    (k/where (not= :naive_destination_url nil))
+    (k/set-fields {:h_resource_equals_browser_destination_url false}))
 
+  (k/update
+    :items
+    (k/where (not= :resource_url nil))
+    (k/where (= :naive_destination_url :resource_url))
+    (k/set-fields {:h_resource_equals_browser_destination_url true})))
 
-(defn heuristic-duplicate-resource-url
+(defn heuristic-item-duplicate-resource-url
   "Mark duplicate resource urls with the ID of the lowest one in the group.
   If there are dupes, this will run once for each, but it's idepotent and cheaper than the alternative."
   [item]
@@ -217,18 +223,62 @@
             (k/where {:resource_url (:resource_url item)})
             (k/set-fields {:h_duplicate_resource_url (:min result)})))))))
 
+
+(defn heuristic-resource-url-proportions
+  "Update heuristics on proportions of items per resource url."
+  [resource-url-domain]
+  (let [domain-id (:id resource-url-domain)
+
+        ; Only interested where we've sampled naïve redirects. Could be zero.
+        resource-url-item-count (-> (k/select :items
+                          (k/where {:resource_url_domain_id domain-id})
+                          (k/where (not= :naive_destination_url_updated nil))
+                          (k/aggregate (count :id) :cnt)) first :cnt)
+
+        count-resource-equals-naive (-> (k/select :items
+                                      (k/where {:resource_url_domain_id domain-id
+                                                :h_resource_equals_browser_destination_url true})
+                                      (k/where (not= :naive_destination_url_updated nil))
+                                      (k/aggregate (count :id) :cnt)) first :cnt)
+
+        ; TODO browser url also
+        proportion-resource-equals-naive (when-not (zero? resource-url-item-count)
+                                                   (float (/ count-resource-equals-naive resource-url-item-count)))]
+
+    ; (log/info "Domain " (:domain resource-url-domain) " proportion where Resource URL == naïve destination url:" proportion-resource-equals-naive)
+    (k/update storage/resource-url-domains
+      (k/where {:id domain-id})
+      (k/set-fields {:h_proportion_naive_equals_browser_destination_url proportion-resource-equals-naive}))))
+
 (defn main-derive-heuristics
   "Calculate various heuristics. Full scan."
   []
+  ; Item heuristics
+
   ; One-off updates.
-  (heristic-all-deleted-items)
+  (log/info "Updating all-items heuristics...")
+  (heuristic-item-all-deleted)
+  (heuristic-item-resource-equals-naive)
+
+  (log/info "Updating per-item heuristics...")
 
   ; Cover only those that haven't (yet) had the heuristic applied.
-  (doseq [item (storage/all-items-nil-field :h_duplicate_resource_url)]
-    (heuristic-duplicate-resource-url item))
+  (kdb/transaction
+    (doseq [item (take 10000 (storage/all-items-nil-field :h_duplicate_resource_url))]
+      (heuristic-item-duplicate-resource-url item)))
 
-  (doseq [item (storage/all-items-nil-field :h_duplicate_naive_destination_url)]
-    (heuristic-duplicate-naive-destination-url item)))
+  (kdb/transaction
+    (doseq [item (take 10000 (storage/all-items-nil-field :h_duplicate_naive_destination_url))]
+      (heuristic-item-duplicate-naive-destination-url item)))
+
+  ; resource-url-domain heuristics
+  (log/info "Updating resource-url-domain heuristics")
+  
+  (kdb/transaction
+    (doseq [resource-url (k/select storage/resource-url-domains)]
+      (heuristic-resource-url-proportions resource-url)))
+
+  )
 
 (def export-dir "/tmp/doi-reverser")
 
@@ -293,14 +343,22 @@
     {:items {:total (-> (k/select :items (k/aggregate (count :id) :cnt)) first :cnt)
              :with-resource-url (-> (k/select :items (k/where (not= :resource_url nil)) (k/aggregate (count :id) :cnt)) first :cnt)
              :with-naive-destination (-> (k/select :items (k/where (not= :naive_destination_url_updated nil)) (k/aggregate (count :id) :cnt)) first :cnt)}
-     :item-heuristics {:duplicate_naive_destination_url (-> (k/select :items (k/where (not= :h_duplicate_naive_destination_url nil)) (k/aggregate (count :id) :cnt)) first :cnt)
-                      :duplicate_resource_url (-> (k/select :items (k/where (not= :h_duplicate_resource_url nil)) (k/aggregate (count :id) :cnt)) first :cnt)
-                      :deleted (-> (k/select :items (k/where (= :h_deleted true)) (k/aggregate (count :id) :cnt)) first :cnt)}
+     :item-heuristics {:duplicate-naive-destination_url (-> (k/select :items (k/where (not= :h_duplicate_naive_destination_url nil)) (k/aggregate (count :id) :cnt)) first :cnt)
+                       :duplicate-resource-url (-> (k/select :items (k/where (not= :h_duplicate_resource_url nil)) (k/aggregate (count :id) :cnt)) first :cnt)
+                       :deleted (-> (k/select :items (k/where (= :h_deleted true)) (k/aggregate (count :id) :cnt)) first :cnt)}
      :doi_prefixes {:total (-> (k/select :doi_prefixes (k/aggregate (count :id) :cnt)) first :cnt)}
      :resource-url-domains {:total (-> (k/select :resource_url_domains (k/aggregate (count :id) :cnt)) first :cnt)}}))
 
+(l/defresource server-domains-counts
+  []
+  :allowed-methods [:get]
+  :available-media-types ["application/json"]
+  :handle-ok (fn [ctx]
+    (k/select storage/resource-url-domains)))
+
 (c/defroutes routes
   (c/GET "/status/counts" [] (server-counts))
+  (c/GET "/status/domains" [] (server-domains-counts))
   (c/GET "/reverse" [] (server-reverse))
   ;; backward compatibility
   (c/GET "/guess-doi" [] (server-reverse)))
