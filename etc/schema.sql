@@ -53,3 +53,13 @@ CREATE INDEX items_naive_destination_url_updated ON items(naive_destination_url_
 CREATE INDEX items_resource_url_domain_id ON items(resource_url_domain_id);
 CREATE INDEX items_naive_destination_url ON items(naive_destination_url(512));
 CREATE INDEX items_resource_equals_browser_destination_url ON items(h_resource_equals_browser_destination_url);
+
+
+-- General purpose temporary working table.
+create table working_count (
+  id INTEGER PRIMARY KEY NOT NULL AUTO_INCREMENT,
+  value VARCHAR(2048),
+  lowest_id INTEGER,
+  count INTEGER NOT NULL DEFAULT 0,
+  UNIQUE KEY value (value(128)));
+

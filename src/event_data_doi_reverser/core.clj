@@ -40,6 +40,8 @@
   (let [counter (atom 0)
         input-items (k/select storage/items (k/where {:resource_url_updated nil}) (k/limit 1000))
         ; seq of futures toiling away in the background
+        ; Takes approx 90 seconds for 1000 in parallell, ~ 11 per second
+        ; Takes about 810 seconds for 10,000 in parallel, ~ 12 per second
         requests (doall (map #(vector % (handle/resolve-doi-link-async (:doi %))) input-items))]
     
     (doseq [request requests]
@@ -158,26 +160,25 @@
         applied (pmap #(sample-naive-redirect-urls-domain (:domain %) (:id %)) domains)]
     (doall applied)))
 
-(defn heuristic-item-duplicate-naive-destination-url
+(defn heuristic-items-duplicate-naive-destination-url
   "Mark duplicate naïve destination urls with the ID of the lowest one in the group.
   If there are dupes, this will run once for each, but it's idepotent and cheaper than the alternative."
-  [item]
-  ; May be nil, in which case skip it.
-  (when (:naive_destination_url item)
-    ; Is there more than one? 
-    (let [result (first
-                   (k/select
-                     :items
-                       (k/where {:naive_destination_url (:naive_destination_url item)})
-                        (k/aggregate (count :id) :cnt)
-                        (k/aggregate (max :id) :min)))]
-      (when (> (:cnt result) 1)
-        (do
-          (log/info "Found duplicate naïve destination url" item)
-          (k/update
-            :items
-            (k/where {:naive_destination_url (:naive_destination_url item)})
-            (k/set-fields {:h_duplicate_naive_destination_url (:min result)})))))))
+  []
+  (log/info "Update duplicate counts for Naive Destination URLs.")
+  (k/exec-raw ["TRUNCATE working_count" []])
+  (log/info "Page through Items...")
+  (let [{min-id :min_id max-id :max_id} (-> (k/select :items (k/aggregate (min :id) :min_id) (k/aggregate (max :id) :max_id)) first)
+        page-size 10000
+        page-range (range min-id max-id page-size)]
+    (doseq [offset page-range]
+      (log/info "Update duplicates" offset (float (* 100 (/ offset (- max-id min-id)))) "%")
+      (k/exec-raw [
+        "INSERT INTO working_count (value, lowest_id, count) (SELECT naive_destination_url, id, 1 FROM items WHERE ID >= ? AND ID < ?) ON DUPLICATE KEY UPDATE count = count + 1, lowest_id = LEAST(lowest_id, items.id)"
+        [offset (+ offset page-size)]])))
+    (doseq [result (k/select :working_count (k/where (> :count 1)))]
+      (log/info "Update duplicates for" (:value result) "item id" (:lowest_id result))
+      (k/update :items (k/set-fields {:h_duplicate_naive_destination_url (:lowest_id result)}) (k/where {:naive_destination_url (:value result)}))))
+
 
 (def deleted-resource-url "http://www.crossref.org/deleted_DOI.html")
 (defn heuristic-item-all-deleted
@@ -202,26 +203,26 @@
     (k/where (= :naive_destination_url :resource_url))
     (k/set-fields {:h_resource_equals_browser_destination_url true})))
 
-(defn heuristic-item-duplicate-resource-url
-  "Mark duplicate resource urls with the ID of the lowest one in the group.
-  If there are dupes, this will run once for each, but it's idepotent and cheaper than the alternative."
-  [item]
-  ; May be nil, in which case skip it.
-  (when (:resource_url item)
-    ; Is there more than one? 
-    (let [result (first
-                   (k/select
-                     :items
-                       (k/where {:resource_url (:resource_url item)})
-                        (k/aggregate (count :id) :cnt)
-                        (k/aggregate (max :id) :min)))]
-      (when (> (:cnt result) 1)
-        (do
-          (log/info "Found duplicate resource url" item)
-          (k/update
-            :items
-            (k/where {:resource_url (:resource_url item)})
-            (k/set-fields {:h_duplicate_resource_url (:min result)})))))))
+
+
+(defn heuristic-items-duplicate-resource-url
+  "Mark duplicate resource urls with the ID of the lowest one in the group."
+  ; Uses a special table rather than GROUP because it's much much faster.
+  []
+  (log/info "Update duplicate counts for Resource URLs.")
+  (k/exec-raw ["TRUNCATE working_count" []])
+  (log/info "Page through Items...")
+  (let [{min-id :min_id max-id :max_id} (-> (k/select :items (k/aggregate (min :id) :min_id) (k/aggregate (max :id) :max_id)) first)
+        page-size 10000
+        page-range (range min-id max-id page-size)]
+    (doseq [offset page-range]
+      (log/info "Update duplicates" offset (float (* 100 (/ offset (- max-id min-id)))) "%")
+      (k/exec-raw [
+        "INSERT INTO working_count (value, lowest_id, count) (SELECT resource_url, id, 1 FROM items WHERE ID >= ? AND ID < ?) ON DUPLICATE KEY UPDATE count = count + 1, lowest_id = LEAST(lowest_id, items.id)"
+        [offset (+ offset page-size)]])))
+    (doseq [result (k/select :working_count (k/where (> :count 1)))]
+      (log/info "Update duplicates for" (:value result) "item id" (:lowest_id result))
+      (k/update :items (k/set-fields {:h_duplicate_resource_url (:lowest_id result)}) (k/where {:resource_url (:value result)}))))
 
 
 (defn heuristic-resource-url-proportions
@@ -260,20 +261,14 @@
   (heuristic-item-all-deleted)
   (heuristic-item-resource-equals-naive)
 
-  (log/info "Updating per-item heuristics...")
+  (heuristic-items-duplicate-resource-url)
+  (heuristic-items-duplicate-naive-destination-url)
 
-  ; Cover only those that haven't (yet) had the heuristic applied.
-  (kdb/transaction
-    (doseq [item (take 10000 (storage/all-items-nil-field :h_duplicate_resource_url))]
-      (heuristic-item-duplicate-resource-url item)))
-
-  (kdb/transaction
-    (doseq [item (take 10000 (storage/all-items-nil-field :h_duplicate_naive_destination_url))]
-      (heuristic-item-duplicate-naive-destination-url item)))
-
+  ; (log/info "Updating per-item heuristics...")
+  ; none currently
+  
   ; resource-url-domain heuristics
   (log/info "Updating resource-url-domain heuristics")
-  
   (kdb/transaction
     (doseq [resource-url (k/select storage/resource-url-domains)]
       (heuristic-resource-url-proportions resource-url)))
@@ -340,10 +335,15 @@
   :allowed-methods [:get]
   :available-media-types ["application/json"]
   :handle-ok (fn [ctx]
-    {:items {:total (-> (k/select :items (k/aggregate (count :id) :cnt)) first :cnt)
+    {:items {; All known Items.
+             :total (-> (k/select :items (k/aggregate (count :id) :cnt)) first :cnt)
+             ; How many have a present resource URL.
              :with-resource-url (-> (k/select :items (k/where (not= :resource_url nil)) (k/aggregate (count :id) :cnt)) first :cnt)
+             ; How many produced an error when trying to retrieve a resource URL.
+             :with-resource-url-error (-> (k/select :items (k/where (in :error_code [error-bad-resource-url error-doi-does-not-resolve])) (k/aggregate (count :id) :cnt)) first :cnt)
+             ; How many we have found the naïve destination.
              :with-naive-destination (-> (k/select :items (k/where (not= :naive_destination_url_updated nil)) (k/aggregate (count :id) :cnt)) first :cnt)}
-     :item-heuristics {:duplicate-naive-destination_url (-> (k/select :items (k/where (not= :h_duplicate_naive_destination_url nil)) (k/aggregate (count :id) :cnt)) first :cnt)
+     :item-heuristics {:duplicate-naive-destination-url (-> (k/select :items (k/where (not= :h_duplicate_naive_destination_url nil)) (k/aggregate (count :id) :cnt)) first :cnt)
                        :duplicate-resource-url (-> (k/select :items (k/where (not= :h_duplicate_resource_url nil)) (k/aggregate (count :id) :cnt)) first :cnt)
                        :deleted (-> (k/select :items (k/where (= :h_deleted true)) (k/aggregate (count :id) :cnt)) first :cnt)}
      :doi_prefixes {:total (-> (k/select :doi_prefixes (k/aggregate (count :id) :cnt)) first :cnt)}
@@ -354,6 +354,7 @@
   :allowed-methods [:get]
   :available-media-types ["application/json"]
   :handle-ok (fn [ctx]
+    ; TODO add count of samples.
     (k/select storage/resource-url-domains)))
 
 (c/defroutes routes

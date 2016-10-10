@@ -63,6 +63,10 @@ For those domains that require browser redirects, follow resource URLs for all I
 Run this once after back-fill.
 Then run every day.
 
+### Update heuristics per items and aggregates
+
+    derive-heuristics
+
 ### Detect conflicts.
 
     TODO
