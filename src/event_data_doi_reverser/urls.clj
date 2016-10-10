@@ -11,12 +11,12 @@
   "Follow a URL to its destination using simple Location headers."
   [url]
   (let [result (try-try-again
-                 {:sleep 5000 :tries 10}
+                 {:sleep 5000 :tries 2}
                  #(-> url (http/get {:follow-links true :headers headers}) deref))
-        url (-> result :opts :url)]
-    
-    (when url
-      url)))
+        url (-> result :opts :url)
+        has-err (boolean (-> result :opts :error))]
+        (prn result)
+    [url has-err]))
 
 (defn try-get-host
   "Return the hostname of a URL string or nil on error."

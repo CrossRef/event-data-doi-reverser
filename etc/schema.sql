@@ -8,8 +8,14 @@ CREATE UNIQUE INDEX doi_prefixes_prefix ON doi_prefixes(prefix);
 CREATE TABLE resource_url_domains (
   id INTEGER PRIMARY KEY NOT NULL AUTO_INCREMENT,
   domain VARCHAR(1024),
-  h_proportion_resource_equals_naive_destination_url FLOAT NULL DEFAULT NULL
-  h_proportion_resource_equals_browser_destination_url FLOAT NULL DEFAULT NULL
+  h_proportion_resource_equals_naive_destination_url FLOAT NULL DEFAULT NULL,
+  h_proportion_resource_equals_browser_destination_url FLOAT NULL DEFAULT NULL,
+
+  c_items INTEGER NULL,
+  c_with_resource_url INTEGER NULL,
+  c_with_resource_url_error INTEGER NULL,
+  c_with_naive_destination_url INTEGER NULL,
+  c_with_naive_destination_url_error INTEGER NULL
 
 ) ENGINE=InnoDB CHARACTER SET=utf8mb4;
 

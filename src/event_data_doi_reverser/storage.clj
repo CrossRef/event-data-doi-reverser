@@ -30,6 +30,13 @@
     :id
     :domain
 
+    ; Counts
+    :c_items
+    :c_with_resource_url
+    :c_with_resource_url_error
+    :c_with_naive_destination_url
+    :c_with_naive_destination_url_error
+
     ; Heuristics
     ; Taken from a sample. Can be null if there is no data.
 

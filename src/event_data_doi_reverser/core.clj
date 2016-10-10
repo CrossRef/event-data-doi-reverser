@@ -30,6 +30,7 @@
 (def error-no-error 0)
 (def error-bad-resource-url 1)
 (def error-doi-does-not-resolve 2)
+(def error-resource-url-error-code 3)
 
 ; DOI
 
@@ -143,13 +144,14 @@
                                  (k/where (not (nil? :resource_url)))
                                  (k/limit naive-sample-size))]
       (doseq [item sample-items]
-        
-        (let [destination-url (urls/resolve-link-naive (:resource_url item))]
+        (let [[destination-url has-error] (urls/resolve-link-naive (:resource_url item))]
           (log/info "Sample" (:doi item) "=" (:resource_url item) " => " destination-url)
           (k/update
             storage/items
-            (k/set-fields {:naive_destination_url destination-url
-                           :naive_destination_url_updated (clj-time/now)})
+            (k/set-fields {; destination-url can be nil on error
+                           :naive_destination_url destination-url
+                           :naive_destination_url_updated (clj-time/now)
+                           :error_code (when has-error error-resource-url-error-code)})
             (k/where {:id (:id item)})))))))
 
 (defn main-sample-naive-redirect-urls
@@ -251,6 +253,36 @@
       (k/where {:id domain-id})
       (k/set-fields {:h_proportion_naive_equals_browser_destination_url proportion-resource-equals-naive}))))
 
+(defn resource-url-counts
+  "Calculate counts of various heuristics per domain."
+  []
+  (log/info "Resource URL Counts")
+  
+  ; All items
+  (log/info "All items")
+  (doseq [result (k/exec-raw ["select count(resource_url_domain_id) as c, resource_url_domain_id from items group by resource_url_domain_id" []] :results)]
+    (k/update storage/resource-url-domains (k/set-fields {:c_items (:c result)}) (k/where {:id (:resource_url_domain_id result)})))
+
+  ; With a resource URL.
+  (log/info "With a resource URL.")
+  (doseq [result (k/exec-raw ["select count(resource_url_domain_id) as c, resource_url_domain_id from items WHERE resource_url IS NOT NULL group by resource_url_domain_id" []] :results)]
+    (k/update storage/resource-url-domains (k/set-fields {:c_with_resource_url (:c result)}) (k/where {:id (:resource_url_domain_id result)})))
+
+  ; With error finding resource url
+  (log/info "With error finding resource url")
+  (doseq [result (k/exec-raw ["select count(resource_url_domain_id) as c, resource_url_domain_id from items WHERE error_code IN (?, ?) group by resource_url_domain_id" [error-bad-resource-url error-doi-does-not-resolve ]] :results)]
+    (k/update storage/resource-url-domains (k/set-fields {:c_with_resource_url_error (:c result)}) (k/where {:id (:resource_url_domain_id result)})))
+
+  ; Where naïve resource URL collected
+  (log/info "Where naïve resource URL collected")
+  (doseq [result (k/exec-raw ["select count(resource_url_domain_id) as c, resource_url_domain_id from items WHERE naive_destination_url IS NOT NULL group by resource_url_domain_id" []] :results)]
+    (k/update storage/resource-url-domains (k/set-fields {:c_with_naive_destination_url (:c result)}) (k/where {:id (:resource_url_domain_id result)})))
+
+  ; Where naïve resource could not be collected.
+  (log/info "Where naïve resource could not be collected.")
+  (doseq [result (k/exec-raw ["select count(resource_url_domain_id) as c, resource_url_domain_id from items WHERE error_code = ? group by resource_url_domain_id" [error-resource-url-error-code]] :results)]
+    (k/update storage/resource-url-domains (k/set-fields {:c_with_naive_destination_url_error (:c result)}) (k/where {:id (:resource_url_domain_id result)}))))
+
 (defn main-derive-heuristics
   "Calculate various heuristics. Full scan."
   []
@@ -260,6 +292,8 @@
   (log/info "Updating all-items heuristics...")
   (heuristic-item-all-deleted)
   (heuristic-item-resource-equals-naive)
+
+  (resource-url-counts)
 
   (heuristic-items-duplicate-resource-url)
   (heuristic-items-duplicate-naive-destination-url)
