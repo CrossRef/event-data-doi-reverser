@@ -45,6 +45,11 @@ CREATE TABLE items (
   h_resource_equals_browser_destination_url BOOLEAN NULL DEFAULT NULL,
   h_naive_equals_browser_destination_url  BOOLEAN NULL DEFAULT NULL,
 
+  h_resource_equals_naive_destination_url BOOLEAN NULL DEFAULT NULL,
+  h_cookie_in_url BOOLEAN NULL DEFAULT NULL,
+  h_https BOOLEAN NULL DEFAULT NULL,
+  h_looks_like_doi_resolver BOOLEAN NULL DEFAULT NULL
+
 ) ENGINE=InnoDB CHARACTER SET=utf8mb4;
 
 
@@ -60,6 +65,10 @@ CREATE INDEX items_resource_url_domain_id ON items(resource_url_domain_id);
 CREATE INDEX items_naive_destination_url ON items(naive_destination_url(512));
 CREATE INDEX items_resource_equals_browser_destination_url ON items(h_resource_equals_browser_destination_url);
 
+CREATE INDEX h_resource_equals_naive_destination_url ON items(h_resource_equals_naive_destination_url);
+CREATE INDEX h_cookie_in_url ON items(h_cookie_in_url);
+CREATE INDEX h_https ON items(h_https);
+CREATE INDEX h_looks_like_doi_resolver ON items(h_looks_like_doi_resolver);
 
 -- General purpose temporary working table.
 create table working_count (

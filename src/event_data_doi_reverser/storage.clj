@@ -97,11 +97,24 @@
     ; Have we deleted the item?
     :h_deleted
 
-    ; Proportion of Items with this resource URL where the resource URL is the same as the browser destination url.
+    ; Is resource URL is the same as the browser destination url?
     :h_resource_equals_browser_destination_url
 
-    ; Proportion of Items with this resource URL where the link URL is the same as the browser url.
-    :h_naive_equals_browser_destination_url)
+    ; Is the naive destination URL is the same as the browser url?
+    :h_naive_equals_browser_destination_url
+
+    ; Is the resource URL the same as the naive destination url?
+    :h_resource_equals_naive_destination_url
+
+    ; Is the word 'cookie' (or similar) in the URL?
+    :h_cookie_in_url
+
+    ; true = https, false = http for resource URL
+    :h_https
+
+    ; looks like a DOI resolver
+    :h_looks_like_doi_resolver
+    )
 
 
   (k/prepare (partial util/map-keys {:resource_url_updated coerce/to-sql-date :naive_destination_url_updated coerce/to-sql-date}))
@@ -189,4 +202,7 @@
         results
         (lazy-cat results (all-items-nil-field field (inc top-id)))))))
 
-
+(defn get-min-max-item-id
+  []
+  (let [{min-id :min_id max-id :max_id} (-> (k/select :items (k/aggregate (min :id) :min_id) (k/aggregate (max :id) :max_id)) first)]
+    [min-id max-id]))

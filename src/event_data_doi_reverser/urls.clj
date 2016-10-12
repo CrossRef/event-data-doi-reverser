@@ -15,7 +15,6 @@
                  #(-> url (http/get {:follow-links true :headers headers}) deref))
         url (-> result :opts :url)
         has-err (boolean (-> result :opts :error))]
-        (prn result)
     [url has-err]))
 
 (defn try-get-host
