@@ -222,7 +222,7 @@
   (let [[min-id max-id] (storage/get-min-max-item-id)]
     (doseq [id (range min-id max-id update-page-size)]
       (log/info "Update" id "/" max-id)
-      (k/exec-raw ["UPDATE items SET h_looks_like_doi_resolver = (resource_url LIKE \"%doi%\") WHERE h_looks_like_doi_resolver IS NULL AND resource_url IS NOT NULL AND id >= ? AND ID <= ?;" [id (+ id update-page-size)]]))))
+      (k/exec-raw ["UPDATE items SET h_looks_like_doi_resolver = (instr(resource_url, doi) > 0 and instr(naive_destination_url, doi) = 0 and  resource_url != naive_destination_url) WHERE h_looks_like_doi_resolver IS NULL AND resource_url IS NOT NULL AND id >= ? AND ID <= ?;" [id (+ id update-page-size)]]))))
 
 
 (defn heuristic-items-duplicate-resource-url
@@ -402,7 +402,11 @@
              :with-naive-destination (-> (k/select :items (k/where (not= :naive_destination_url_updated nil)) (k/aggregate (count :id) :cnt)) first :cnt)}
      :item-heuristics {:duplicate-naive-destination-url (-> (k/select :items (k/where (not= :h_duplicate_naive_destination_url nil)) (k/aggregate (count :id) :cnt)) first :cnt)
                        :duplicate-resource-url (-> (k/select :items (k/where (not= :h_duplicate_resource_url nil)) (k/aggregate (count :id) :cnt)) first :cnt)
-                       :deleted (-> (k/select :items (k/where (= :h_deleted true)) (k/aggregate (count :id) :cnt)) first :cnt)}
+                       :deleted (-> (k/select :items (k/where (= :h_deleted true)) (k/aggregate (count :id) :cnt)) first :cnt)
+                       :h_resource_equals_naive_destination_url (-> (k/select :items (k/where (= :h_resource_equals_naive_destination_url true)) (k/aggregate (count :id) :cnt)) first :cnt)
+                       :h_cookie_in_url (-> (k/select :items (k/where (= :h_cookie_in_url true)) (k/aggregate (count :id) :cnt)) first :cnt)
+                       :h_https (-> (k/select :items (k/where (= :h_https true)) (k/aggregate (count :id) :cnt)) first :cnt)
+                       :h_looks_like_doi_resolver (-> (k/select :items (k/where (= :h_looks_like_doi_resolver true)) (k/aggregate (count :id) :cnt)) first :cnt)}
      :doi_prefixes {:total (-> (k/select :doi_prefixes (k/aggregate (count :id) :cnt)) first :cnt)}
      :resource-url-domains {:total (-> (k/select :resource_url_domains (k/aggregate (count :id) :cnt)) first :cnt)}}))
 
