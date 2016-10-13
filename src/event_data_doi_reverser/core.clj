@@ -207,7 +207,7 @@
   (let [[min-id max-id] (storage/get-min-max-item-id)]
     (doseq [id (range min-id max-id update-page-size)]
       (log/info "Update" id "/" max-id)
-      (k/exec-raw ["UPDATE items SET h_cookie_in_url = (naive_destination_url LIKE \"%cookie\") WHERE h_cookie_in_url IS NULL AND naive_destination_url IS NOT NULL AND id >= ? AND ID <= ?;" [id (+ id update-page-size)]]))))
+      (k/exec-raw ["UPDATE items SET h_cookie_in_url = (naive_destination_url LIKE \"%cookie%\") WHERE h_cookie_in_url IS NULL AND naive_destination_url IS NOT NULL AND id >= ? AND ID <= ?;" [id (+ id update-page-size)]]))))
 
 (defn heuristic-items-https []
   "Update h_https where Resource URL is HTTPS where not already set."
