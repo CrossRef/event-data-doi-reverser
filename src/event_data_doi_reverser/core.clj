@@ -355,6 +355,18 @@
   (export-all-dois)
   )
 
+(defn main-load-dois-file
+  [filename]
+    (let [counter (atom 0)]
+    (doseq [chunk (partition-all 10000 (line-seq (io/reader filename)))]\
+      (log/info "Chunk!")
+      (kdb/transaction
+        (doseq [line chunk]
+          (swap! counter inc)
+          (when (zero? (mod @counter 1000))
+            (log/info "Lines:" @counter))
+          (storage/ensure-item line))))))
+
 (defn lookup-item-from-resource-url
   [url]
   ; TODO look for canonical/primary DOI - follow links and check it's been vetted.
@@ -439,6 +451,7 @@
   (let [command (first args)]
     (log/info "Command:" command)
     (condp = command
+      "load-dois-file" (main-load-dois-file (second args))
       "update-items" (main-update-items (second args) (second args))
       "update-items-many" (main-update-items-many (rest args))
       "update-resource-urls" (main-update-resource-urls)
