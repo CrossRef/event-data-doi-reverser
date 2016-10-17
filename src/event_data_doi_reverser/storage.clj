@@ -85,6 +85,12 @@
     :naive_destination_url
     :naive_destination_url_updated
 
+    ; The destination URL after browser redirects
+    :browser_destination_url
+    :browser_destination_url_updated
+    :browser_destination_url_hops
+    :browser_destination_status_code
+
     ; Heuristics
     ; These are denormalized and some are materialized views. But there will be up to 100 million rows.
 
@@ -117,8 +123,8 @@
     )
 
 
-  (k/prepare (partial util/map-keys {:resource_url_updated coerce/to-sql-date :naive_destination_url_updated coerce/to-sql-date}))
-  (k/transform (partial util/map-keys {:resource_url_updated coerce/from-sql-date :naive_destination_url_updated coerce/from-sql-date})))
+  (k/prepare (partial util/map-keys {:resource_url_updated coerce/to-sql-date :naive_destination_url_updated coerce/to-sql-date :browser_destination_url_updated coerce/to-sql-date}))
+  (k/transform (partial util/map-keys {:resource_url_updated coerce/from-sql-date :naive_destination_url_updated coerce/from-sql-date :browser_destination_url_updated coerce/from-sql-date})))
 
 
 ; Cache of prefix -> prefix id.

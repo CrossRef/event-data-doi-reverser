@@ -162,6 +162,41 @@
         applied (pmap #(sample-naive-redirect-urls-domain (:domain %) (:id %)) domains)]
     (doall applied)))
 
+(defn sample-browser-redirect-urls-domain
+  "Take a sample of Items for a given domain, follow browser links and update the database.
+  Only interested in those where a naïve destination has already been collected."
+  [domain-name domain-id]
+  (log/info "Sample domain" domain-name)
+  (let [total-items (-> (k/exec-raw ["SELECT COUNT(id) AS c FROM items WHERE resource_url_domain_id = ?" [domain-id]] :results) first :c)
+        total-with-naive-destination (-> (k/exec-raw ["SELECT COUNT(id) AS c FROM items WHERE resource_url_domain_id = ? AND naive_destination_url_updated IS NOT NULL" [domain-id]] :results) first :c)
+        unsampled-items (-> (k/exec-raw ["SELECT COUNT(id) AS c FROM items WHERE resource_url_domain_id = ? AND browser_destination_url_updated IS NULL AND naive_destination_url_updated IS NOT NULL" [domain-id]] :results) first :c)]
+    (log/info "Total items:" total-items ", of which with naive urls," total-with-naive-destination ", of which yet unsampled:" unsampled-items)
+    
+    ; Use :naive_destination_url_updated to indicate whether or not the sample has been taken.
+    (let [sample-items (k/select storage/items
+                                 (k/where {:resource_url_domain_id domain-id :browser_destination_url_updated nil})
+                                 (k/where (not (nil? :resource_url)))
+                                 (k/limit naive-sample-size))]
+      (doseq [item sample-items]
+        (let [[destination-url status-code] (urls/resolve-link-browser (:resource_url item))]
+          (log/info "Sample" (:doi item) "=" (:resource_url item) " => " destination-url)
+          (k/update
+            storage/items
+            (k/set-fields {; destination-url can be nil on error
+                           :browser_destination_url destination-url
+                           :browser_destination_status_code status-code
+                           :browser_destination_url_updated (clj-time/now)})
+            (k/where {:id (:id item)})))))))
+
+(defn main-sample-browser-redirect-urls
+  "Scan a sample of URLs per resource url domain."
+  []
+  (log/info "Sample browser redirect urls.")
+  (let [domains (k/select storage/resource-url-domains)
+        applied (pmap #(sample-browser-redirect-urls-domain (:domain %) (:id %)) domains)]
+    (doall applied)))
+
+
 (defn heuristic-items-duplicate-naive-destination-url
   "Mark duplicate naïve destination urls with the ID of the lowest one in the group.
   If there are dupes, this will run once for each, but it's idepotent and cheaper than the alternative."
@@ -456,6 +491,7 @@
       "update-items-many" (main-update-items-many (rest args))
       "update-resource-urls" (main-update-resource-urls)
       "sample-naive-redirect-urls" (main-sample-naive-redirect-urls)
+      "sample-browser-redirect-urls" (main-sample-browser-redirect-urls)
       
       ; TODO reset-heuristics - for when input data might have changed.
       "derive-heuristics" (main-derive-heuristics)

@@ -38,6 +38,11 @@ CREATE TABLE items (
   naive_destination_url VARCHAR(2048) NULL,
   naive_destination_url_updated DATETIME NULL,
 
+  browser_destination_url VARCHAR(2048) NULL,
+  browser_destination_url_updated DATETIME NULL,
+  browser_destination_url_hops INTEGER NULL,
+  browser_destination_status_code INTEGER NULL,
+
   -- heuristics
   h_duplicate_naive_destination_url INTEGER NULL,
   h_duplicate_resource_url INTEGER NULL,
@@ -64,6 +69,10 @@ CREATE INDEX items_naive_destination_url_updated ON items(naive_destination_url_
 CREATE INDEX items_resource_url_domain_id ON items(resource_url_domain_id);
 CREATE INDEX items_naive_destination_url ON items(naive_destination_url(512));
 CREATE INDEX items_resource_equals_browser_destination_url ON items(h_resource_equals_browser_destination_url);
+
+CREATE INDEX items_browser_destination_url on items(browser_destination_url(128));
+CREATE INDEX items_browser_destination_url_updated on items(browser_destination_url_updated);
+CREATE INDEX items_browser_destination_status_code on items(browser_destination_status_code);
 
 CREATE INDEX h_resource_equals_naive_destination_url ON items(h_resource_equals_naive_destination_url);
 CREATE INDEX h_cookie_in_url ON items(h_cookie_in_url);
