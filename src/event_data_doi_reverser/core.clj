@@ -269,7 +269,7 @@
     ; (log/info "Domain " (:domain resource-url-domain) " proportion where Resource URL == naïve destination url:" proportion-resource-equals-naive)
     (k/update storage/resource-url-domains
       (k/where {:id domain-id})
-      (k/set-fields {:h_proportion_naive_equals_browser_destination_url proportion-resource-equals-naive}))))
+      (k/set-fields {:h_proportion_resource_equals_naive_destination_url proportion-resource-equals-naive}))))
 
 (defn resource-url-counts
   "Calculate counts of various heuristics per domain."
