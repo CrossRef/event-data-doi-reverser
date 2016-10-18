@@ -10,6 +10,7 @@ CREATE TABLE resource_url_domains (
   domain VARCHAR(1024),
   h_proportion_resource_equals_naive_destination_url FLOAT NULL DEFAULT NULL,
   h_proportion_resource_equals_browser_destination_url FLOAT NULL DEFAULT NULL,
+  h_proportion_naive_equals_browser_destination_url FLOAT NULL DEFAULT NULL,
 
   c_items INTEGER NULL,
   c_with_resource_url INTEGER NULL,
@@ -45,7 +46,9 @@ CREATE TABLE items (
 
   -- heuristics
   h_duplicate_naive_destination_url INTEGER NULL,
+  h_duplicate_browser_destination_url INTEGER NULL,
   h_duplicate_resource_url INTEGER NULL,
+
   h_deleted BOOLEAN NOT NULL DEFAULT FALSE,
   h_resource_equals_browser_destination_url BOOLEAN NULL DEFAULT NULL,
   h_naive_equals_browser_destination_url  BOOLEAN NULL DEFAULT NULL,
@@ -79,8 +82,28 @@ CREATE INDEX h_cookie_in_url ON items(h_cookie_in_url);
 CREATE INDEX h_https ON items(h_https);
 CREATE INDEX h_looks_like_doi_resolver ON items(h_looks_like_doi_resolver);
 
--- General purpose temporary working table.
-create table working_count (
+-- Working table for duplicate resource URLs.
+-- Recreated every heuristic update.
+create table duplicate_resource_urls (
+  id INTEGER PRIMARY KEY NOT NULL AUTO_INCREMENT,
+  value VARCHAR(2048),
+  lowest_id INTEGER,
+  count INTEGER NOT NULL DEFAULT 0,
+  UNIQUE KEY value (value(128)));
+
+-- Working table for duplicate resource URLs.
+-- Recreated every heuristic update.
+create table duplicate_naive_urls (
+  id INTEGER PRIMARY KEY NOT NULL AUTO_INCREMENT,
+  value VARCHAR(2048),
+  lowest_id INTEGER,
+  count INTEGER NOT NULL DEFAULT 0,
+  UNIQUE KEY value (value(128)));
+
+
+-- Working table for duplicate resource URLs.
+-- Recreated every heuristic update.
+create table duplicate_browser_urls (
   id INTEGER PRIMARY KEY NOT NULL AUTO_INCREMENT,
   value VARCHAR(2048),
   lowest_id INTEGER,

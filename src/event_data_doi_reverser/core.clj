@@ -199,10 +199,11 @@
 
 (defn heuristic-items-duplicate-naive-destination-url
   "Mark duplicate naïve destination urls with the ID of the lowest one in the group.
-  If there are dupes, this will run once for each, but it's idepotent and cheaper than the alternative."
+  If there are dupes, this will run once for each, but it's idepotent and cheaper than the alternative.
+  Leave results in duplicate_naive_urls table."
   []
   (log/info "Update duplicate counts for Naive Destination URLs.")
-  (k/exec-raw ["TRUNCATE working_count" []])
+  (k/exec-raw ["TRUNCATE duplicate_naive_urls" []])
   (log/info "Page through Items...")
   (let [{min-id :min_id max-id :max_id} (-> (k/select :items (k/aggregate (min :id) :min_id) (k/aggregate (max :id) :max_id)) first)
         page-size 10000
@@ -210,62 +211,39 @@
     (doseq [offset page-range]
       (log/info "Update duplicates" offset (float (* 100 (/ offset (- max-id min-id)))) "%")
       (k/exec-raw [
-        "INSERT INTO working_count (value, lowest_id, count) (SELECT naive_destination_url, id, 1 FROM items WHERE ID >= ? AND ID < ?) ON DUPLICATE KEY UPDATE count = count + 1, lowest_id = LEAST(lowest_id, items.id)"
+        "INSERT INTO duplicate_naive_urls (value, lowest_id, count) (SELECT naive_destination_url, id, 1 FROM items WHERE ID >= ? AND ID < ?) ON DUPLICATE KEY UPDATE count = count + 1, lowest_id = LEAST(lowest_id, items.id)"
         [offset (+ offset page-size)]])))
-    (doseq [result (k/select :working_count (k/where (> :count 1)))]
+    (doseq [result (k/select :duplicate_naive_urls (k/where (> :count 1)))]
       (log/info "Update duplicates for" (:value result) "item id" (:lowest_id result))
       (k/update :items (k/set-fields {:h_duplicate_naive_destination_url (:lowest_id result)}) (k/where {:naive_destination_url (:value result)}))))
 
-; For visibility, heuristic updates update in batches of IDs of this size.
-(def update-page-size 100000)
-
-(def deleted-resource-url "http://www.crossref.org/deleted_DOI.html")
-(defn heuristic-items-deleted
-  "Mark items that have been deleted."
+(defn heuristic-items-duplicate-browser-destination-url
+  "Mark duplicate browser destination urls with the ID of the lowest one in the group.
+  If there are dupes, this will run once for each, but it's idepotent and cheaper than the alternative.
+  Leave results in duplicate_browser_urls table"
   []
-  (let [[min-id max-id] (storage/get-min-max-item-id)]
-    (doseq [id (range min-id max-id update-page-size)]
-      (log/info "Update" id "/" max-id)
-      (k/exec-raw ["UPDATE items SET h_deleted = (resource_url = ?) WHERE h_deleted IS NULL AND resource_url IS NOT NULL AND id >= ? AND ID <= ?;" [deleted-resource-url id (+ id update-page-size)]]))))
-
-(defn heuristic-items-resource-equals-naive
-  "Update h_resource_equals_naive_destination_url where not already set."
-  []
-  (let [[min-id max-id] (storage/get-min-max-item-id)]
-    (doseq [id (range min-id max-id update-page-size)]
-      (log/info "Update" id "/" max-id)
-      (k/exec-raw ["UPDATE items SET h_resource_equals_naive_destination_url = (naive_destination_url = resource_url) WHERE h_resource_equals_naive_destination_url IS NULL AND resource_url IS NOT NULL AND id >= ? AND ID <= ?;" [id (+ id update-page-size)]]))))
-
-(defn heuristic-items-cookie-url
-  "Update h_cookie_in_url where not already set."
-  []
-  (let [[min-id max-id] (storage/get-min-max-item-id)]
-    (doseq [id (range min-id max-id update-page-size)]
-      (log/info "Update" id "/" max-id)
-      (k/exec-raw ["UPDATE items SET h_cookie_in_url = (naive_destination_url LIKE \"%cookie%\") WHERE h_cookie_in_url IS NULL AND naive_destination_url IS NOT NULL AND id >= ? AND ID <= ?;" [id (+ id update-page-size)]]))))
-
-(defn heuristic-items-https []
-  "Update h_https where Resource URL is HTTPS where not already set."
-  []
-  (let [[min-id max-id] (storage/get-min-max-item-id)]
-    (doseq [id (range min-id max-id update-page-size)]
-      (log/info "Update" id "/" max-id)
-      (k/exec-raw ["UPDATE items SET h_https = (resource_url LIKE \"https://%\") WHERE h_https IS NULL AND resource_url IS NOT NULL AND id >= ? AND ID <= ?;" [id (+ id update-page-size)]]))))
-
-(defn heuristic-items-doi-resolver []
-  "Look for 'doi' in the Resource URL to identify DOI resolvers. Update h_looks_like_doi_resolver where not set."
-  (let [[min-id max-id] (storage/get-min-max-item-id)]
-    (doseq [id (range min-id max-id update-page-size)]
-      (log/info "Update" id "/" max-id)
-      (k/exec-raw ["UPDATE items SET h_looks_like_doi_resolver = (instr(resource_url, doi) > 0 and instr(naive_destination_url, doi) = 0 and  resource_url != naive_destination_url) WHERE h_looks_like_doi_resolver IS NULL AND resource_url IS NOT NULL AND id >= ? AND ID <= ?;" [id (+ id update-page-size)]]))))
-
+  (log/info "Update duplicate counts for Naive Destination URLs.")
+  (k/exec-raw ["TRUNCATE duplicate_browser_urls" []])
+  (log/info "Page through Items...")
+  (let [{min-id :min_id max-id :max_id} (-> (k/select :items (k/aggregate (min :id) :min_id) (k/aggregate (max :id) :max_id)) first)
+        page-size 10000
+        page-range (range min-id max-id page-size)]
+    (doseq [offset page-range]
+      (log/info "Update duplicates" offset (float (* 100 (/ offset (- max-id min-id)))) "%")
+      (k/exec-raw [
+        "INSERT INTO duplicate_browser_urls (value, lowest_id, count) (SELECT naive_destination_url, id, 1 FROM items WHERE ID >= ? AND ID < ?) ON DUPLICATE KEY UPDATE count = count + 1, lowest_id = LEAST(lowest_id, items.id)"
+        [offset (+ offset page-size)]])))
+    (doseq [result (k/select :duplicate_browser_urls (k/where (> :count 1)))]
+      (log/info "Update duplicates for" (:value result) "item id" (:lowest_id result))
+      (k/update :items (k/set-fields {:h_duplicate_browser_destination_url (:lowest_id result)}) (k/where {:naive_destination_url (:value result)}))))
 
 (defn heuristic-items-duplicate-resource-url
-  "Mark duplicate resource urls with the ID of the lowest one in the group."
+  "Mark duplicate resource urls with the ID of the lowest one in the group.
+  Leave results in the duplicate_resource_urls table."
   ; Uses a special table rather than GROUP because it's much much faster.
   []
   (log/info "Update duplicate counts for Resource URLs.")
-  (k/exec-raw ["TRUNCATE working_count" []])
+  (k/exec-raw ["TRUNCATE duplicate_resource_urls" []])
   (log/info "Page through Items...")
   (let [[min-id max-id] (storage/get-min-max-item-id)
         page-size 10000
@@ -273,11 +251,60 @@
     (doseq [offset page-range]
       (log/info "Update duplicates" offset (float (* 100 (/ offset (- max-id min-id)))) "%")
       (k/exec-raw [
-        "INSERT INTO working_count (value, lowest_id, count) (SELECT resource_url, id, 1 FROM items WHERE ID >= ? AND ID < ?) ON DUPLICATE KEY UPDATE count = count + 1, lowest_id = LEAST(lowest_id, items.id)"
+        "INSERT INTO duplicate_resource_urls (value, lowest_id, count) (SELECT resource_url, id, 1 FROM items WHERE ID >= ? AND ID < ?) ON DUPLICATE KEY UPDATE count = count + 1, lowest_id = LEAST(lowest_id, items.id)"
         [offset (+ offset page-size)]])))
-    (doseq [result (k/select :working_count (k/where (> :count 1)))]
+    (doseq [result (k/select :duplicate_resource_urls (k/where (> :count 1)))]
       (log/info "Update duplicates for" (:value result) "item id" (:lowest_id result))
       (k/update :items (k/set-fields {:h_duplicate_resource_url (:lowest_id result)}) (k/where {:resource_url (:value result)}))))
+
+
+; For visibility, heuristic updates update in batches of IDs of this size.
+(def update-page-size 100000)
+
+(def deleted-resource-url "http://www.crossref.org/deleted_DOI.html")
+
+(defn items-row-heuristics
+  "Update a set of heuristics that can be calculated per row. Only calculate where not already done."
+  []
+  (let [[min-id max-id] (storage/get-min-max-item-id)]
+    (doseq [id (range min-id max-id update-page-size)]
+      (log/info "Update" id "/" max-id "=" (float (* 100 (/ id max-id))) "%")
+
+      (k/exec-raw ["UPDATE items
+                    SET h_resource_equals_naive_destination_url = (naive_destination_url = resource_url)
+                    WHERE h_resource_equals_naive_destination_url IS NULL AND resource_url IS NOT NULL
+                    AND id >= ? AND ID <= ?;" [id (+ id update-page-size)]])
+      
+      (k/exec-raw ["UPDATE items
+                    SET h_naive_equals_browser_destination_url = (naive_destination_url = browser_destination_url)
+                    WHERE h_naive_equals_browser_destination_url IS NULL
+                    AND browser_destination_url IS NOT NULL 
+                    AND id >= ? AND ID <= ?;" [id (+ id update-page-size)]])
+      
+      (k/exec-raw ["UPDATE items
+                    SET h_resource_equals_browser_destination_url = (browser_destination_url = resource_url)
+                    WHERE h_resource_equals_browser_destination_url IS NULL AND browser_destination_url IS NOT NULL 
+                    AND id >= ? AND ID <= ?;" [id (+ id update-page-size)]])
+      
+      (k/exec-raw ["UPDATE items
+                    SET h_cookie_in_url = (naive_destination_url LIKE \"%cookie%\")
+                    WHERE h_cookie_in_url IS NULL AND naive_destination_url IS NOT NULL AND id >= ? 
+                    AND ID <= ?;" [id (+ id update-page-size)]])
+      
+      (k/exec-raw ["UPDATE items
+                    SET h_https = (resource_url LIKE \"https://%\")
+                    WHERE h_https IS NULL AND resource_url IS NOT NULL AND id >= ? AND ID <= ?;" [id (+ id update-page-size)]])
+      
+      (k/exec-raw ["UPDATE items
+                    SET h_looks_like_doi_resolver = (instr(resource_url, doi) > 0 and instr(naive_destination_url, doi) = 0 and  resource_url != naive_destination_url)
+                    WHERE h_looks_like_doi_resolver IS NULL AND resource_url IS NOT NULL AND id >= ? 
+                    AND ID <= ?;" [id (+ id update-page-size)]])
+      
+      (k/exec-raw ["UPDATE items
+                    SET h_deleted = (resource_url = ?)
+                    WHERE h_deleted IS NULL AND resource_url IS NOT NULL 
+                    AND id >= ? AND ID <= ?;" [deleted-resource-url id (+ id update-page-size)]]))))
+
 
 
 (defn heuristic-resource-url-proportions
@@ -286,25 +313,45 @@
   (let [domain-id (:id resource-url-domain)
 
         ; Only interested where we've sampled naïve redirects. Could be zero.
-        resource-url-item-count (-> (k/select :items
+        naive-url-item-count (-> (k/select :items
                           (k/where {:resource_url_domain_id domain-id})
                           (k/where (not= :naive_destination_url_updated nil))
                           (k/aggregate (count :id) :cnt)) first :cnt)
 
         count-resource-equals-naive (-> (k/select :items
                                       (k/where {:resource_url_domain_id domain-id
-                                                :h_resource_equals_browser_destination_url true})
+                                                :h_resource_equals_naive_destination_url true})
                                       (k/where (not= :naive_destination_url_updated nil))
                                       (k/aggregate (count :id) :cnt)) first :cnt)
 
-        ; TODO browser url also
-        proportion-resource-equals-naive (when-not (zero? resource-url-item-count)
-                                                   (float (/ count-resource-equals-naive resource-url-item-count)))]
+        ; Will return null if there's no data.
+        proportion-resource-equals-naive (when-not (zero? naive-url-item-count)
+                                           (float (/ count-resource-equals-naive naive-url-item-count)))
+
+
+        ; Only interested where we've sampled both naïve and browser redirects. Could be zero.
+        browser-url-item-count (-> (k/select :items
+                          (k/where {:resource_url_domain_id domain-id})
+                          (k/where (not= :naive_destination_url_updated nil))
+                          (k/where (not= :browser_destination_url_updated nil))
+                          (k/aggregate (count :id) :cnt)) first :cnt)
+
+        count-naive-equals-browser (-> (k/select :items
+                                      (k/where {:resource_url_domain_id domain-id
+                                                :h_resource_equals_browser_destination_url true})
+                                      (k/where (not= :naive_destination_url_updated nil))
+                                      (k/where (not= :h_naive_equals_browser_destination_url nil))
+                                      (k/aggregate (count :id) :cnt)) first :cnt)
+
+        ; Will return null if there's no data.
+        proportion-naive-equals-browser (when-not (zero? browser-url-item-count)
+                                                   (float (/ count-resource-equals-naive browser-url-item-count)))]
 
     ; (log/info "Domain " (:domain resource-url-domain) " proportion where Resource URL == naïve destination url:" proportion-resource-equals-naive)
     (k/update storage/resource-url-domains
       (k/where {:id domain-id})
-      (k/set-fields {:h_proportion_resource_equals_naive_destination_url proportion-resource-equals-naive}))))
+      (k/set-fields {:h_proportion_resource_equals_naive_destination_url proportion-resource-equals-naive
+                     :h_proportion_naive_equals_browser_destination_url proportion-naive-equals-browser}))))
 
 (defn resource-url-counts
   "Calculate counts of various heuristics per domain."
@@ -313,27 +360,39 @@
   
   ; All items
   (log/info "All items")
-  (doseq [result (k/exec-raw ["select count(resource_url_domain_id) as c, resource_url_domain_id from items group by resource_url_domain_id" []] :results)]
+  (doseq [result (k/exec-raw ["select count(resource_url_domain_id) as c, resource_url_domain_id
+                               from items
+                               group by resource_url_domain_id" []] :results)]
     (k/update storage/resource-url-domains (k/set-fields {:c_items (:c result)}) (k/where {:id (:resource_url_domain_id result)})))
 
   ; With a resource URL.
   (log/info "With a resource URL.")
-  (doseq [result (k/exec-raw ["select count(resource_url_domain_id) as c, resource_url_domain_id from items WHERE resource_url IS NOT NULL group by resource_url_domain_id" []] :results)]
+  (doseq [result (k/exec-raw ["select count(resource_url_domain_id) as c, resource_url_domain_id
+                               from items
+                               WHERE resource_url IS NOT NULL
+                               group by resource_url_domain_id" []] :results)]
     (k/update storage/resource-url-domains (k/set-fields {:c_with_resource_url (:c result)}) (k/where {:id (:resource_url_domain_id result)})))
 
   ; With error finding resource url
   (log/info "With error finding resource url")
-  (doseq [result (k/exec-raw ["select count(resource_url_domain_id) as c, resource_url_domain_id from items WHERE error_code IN (?, ?) group by resource_url_domain_id" [error-bad-resource-url error-doi-does-not-resolve ]] :results)]
+  (doseq [result (k/exec-raw ["select count(resource_url_domain_id) as c, resource_url_domain_id
+                               from items WHERE error_code IN (?, ?)
+                               group by resource_url_domain_id" [error-bad-resource-url error-doi-does-not-resolve ]] :results)]
     (k/update storage/resource-url-domains (k/set-fields {:c_with_resource_url_error (:c result)}) (k/where {:id (:resource_url_domain_id result)})))
 
-  ; Where naïve resource URL collected
-  (log/info "Where naïve resource URL collected")
-  (doseq [result (k/exec-raw ["select count(resource_url_domain_id) as c, resource_url_domain_id from items WHERE naive_destination_url IS NOT NULL group by resource_url_domain_id" []] :results)]
+  ; Where naïve destination URL collected
+  (log/info "Where naïve destination URL collected")
+  (doseq [result (k/exec-raw ["select count(resource_url_domain_id) as c, resource_url_domain_id
+                               from items
+                               WHERE naive_destination_url IS NOT NULL
+                               group by resource_url_domain_id" []] :results)]
     (k/update storage/resource-url-domains (k/set-fields {:c_with_naive_destination_url (:c result)}) (k/where {:id (:resource_url_domain_id result)})))
 
   ; Where naïve resource could not be collected.
   (log/info "Where naïve resource could not be collected.")
-  (doseq [result (k/exec-raw ["select count(resource_url_domain_id) as c, resource_url_domain_id from items WHERE error_code = ? group by resource_url_domain_id" [error-resource-url-error-code]] :results)]
+  (doseq [result (k/exec-raw ["select count(resource_url_domain_id) as c, resource_url_domain_id
+                               from items WHERE error_code = ?
+                               group by resource_url_domain_id" [error-resource-url-error-code]] :results)]
     (k/update storage/resource-url-domains (k/set-fields {:c_with_naive_destination_url_error (:c result)}) (k/where {:id (:resource_url_domain_id result)}))))
 
 (defn main-derive-heuristics
@@ -341,31 +400,29 @@
   []
   ; Item heuristics
 
-  ; One-off updates.
-  (log/info "Updating all-items heuristics...")
-  
-  (heuristic-items-deleted)
-  (heuristic-items-resource-equals-naive)
-  (heuristic-items-cookie-url)
-  (heuristic-items-https)
-  (heuristic-items-doi-resolver)
+
+  ; Those Item heuristics that can be calculated per-row.
+  (log/info "Updating all-items per-row heuristics...")
+  (items-row-heuristics)
 
   (resource-url-counts)
 
   ; Those involving groups.
+  (log/info "Updating duplicate resource url items.")
   (heuristic-items-duplicate-resource-url)
+  
+  (log/info "Updating duplicate naive url items.")
   (heuristic-items-duplicate-naive-destination-url)
 
-  ; (log/info "Updating per-item heuristics...")
-  ; none currently
+  (log/info "Updating duplicate browser url items.")
+  (heuristic-items-duplicate-browser-destination-url)
   
   ; resource-url-domain heuristics
   (log/info "Updating resource-url-domain heuristics")
   (kdb/transaction
     (doseq [resource-url (k/select storage/resource-url-domains)]
-      (heuristic-resource-url-proportions resource-url)))
-
-  )
+      (log/info "Updating resource-url-domain heuristics for" resource-url)
+      (heuristic-resource-url-proportions resource-url))))
 
 (def export-dir "/tmp/doi-reverser")
 

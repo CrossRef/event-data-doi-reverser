@@ -97,8 +97,12 @@
     ; Does the destination URL have duplicates in other Items? If so, this contains the lowest ID of all other duplicates.
     :h_duplicate_naive_destination_url
 
-    ; Does the resource URL have duplicates in other Items? If so this contains the lowest ID fo other duplicates.
+    ; Does the resource URL have duplicates in other Items? If so this contains the lowest ID of other duplicates.
     :h_duplicate_resource_url
+
+    ; Does the browser URL have duplicates in other Items? If so this contains the lowest ID of other duplicates.
+    :h_duplicate_browser_destination_url
+
 
     ; Have we deleted the item?
     :h_deleted
