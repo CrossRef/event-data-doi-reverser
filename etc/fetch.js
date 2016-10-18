@@ -1,5 +1,9 @@
 "use strict";
 
+console.error = function () {
+    require("system").stderr.write(Array.prototype.join.call(arguments, ' ') + '\n');
+};
+
 // Requested resource => response code.
 var resourceResponseCodes = {};
 
@@ -12,11 +16,13 @@ var finished = false;
 var path = [];
 var log = [];
 
-var page = require('webpage').create(),
-     system = require('system'),
-     address;
- var fs = require('fs');
+var page = require('webpage').create();
+var system = require('system');
+var fs = require('fs');
 
+page.onError = function(message, trace) {
+  stderr.write("Script error:" + message);
+};
 
 page.customHeaders = {
   "User-Agent": "Crossref Thamnophilus labs@crossref.org (+http://labs.crossref.org)"
@@ -26,7 +32,7 @@ var resetTimeout = function(callback, time) {
     // system.stderr.write("resetTimeout");
 
     window.clearTimeout(timeout);
-    timeout = setTimeout(function() {
+    timeout = window.setTimeout(function() {
         var numRedirects = path.length;
         var lastUrl = null;
         if (numRedirects > 0) {
@@ -77,7 +83,11 @@ var navigatePage = function (doi, callback) {
     });
 };
 
-// system.stderr.write("hi");
+// Master 10 second timeout for if things really go south.
+window.setTimeout(function() {
+    system.stderr.write("ERROR: Ten second timeout. Aborting.");
+    phantom.exit(1);
+}, 10000);
 
 // Read a line that contains a URL
 var inputUrl = system.stdin.readLine();
@@ -92,11 +102,10 @@ if (inputUrl === undefined) {
     navigatePage(inputUrl, function (pid, path) {
         var response = {
             "path": window.path.map(function(url) {
-                // Fake 200 when not supplied. TODO: Find reason!
-                var status = window.resourceResponseCodes[url] || 200;
-                return [url, status]})
-         }
-         // system.stderr.write("3");
+                // Fake 503 when not supplied. TODO: Find reason!
+                var status = window.resourceResponseCodes[url] || 503;
+                return [url, status];
+            })};
         
         system.stdout.write(JSON.stringify(response));
         phantom.exit(0);

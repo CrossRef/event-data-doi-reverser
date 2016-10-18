@@ -32,12 +32,16 @@
   "Follow a URL to its destination using headless browser. Return nil on error."
   [url]
   (log/info "Resolve browser:" url)
-  (let [response (sh "phantomjs" "etc/fetch.js" :in url)]
+  (let [response (sh "timeout" "10" "phantomjs" "etc/fetch.js" :in url)]
     (if-not (= (:exit response) 0)
       (do
-        (log/error "Error calling Phantom STDOUT" (:err response))
-        (log/error "Error calling Phantom STDERR" (:out response))
+        (log/error "Error calling Phantom exit:" (:exit response))
+        (log/error "Error calling Phantom STDOUT:" (:err response))
+        (log/error "Error calling Phantom STDERR:" (:out response))
         nil)
-      (let [output (json/read-str (:out response))
-        [last-url last-code] (last (output "path"))]
-        [last-url last-code]))))
+      (try
+        (let [output (json/read-str (:out response))
+          [last-url last-code] (last (output "path"))]
+          [last-url last-code])
+        (catch Exception e (log/info "Exception processing browser response for:" url ", got response" (:out response) ", exception:" e ))))))
+
