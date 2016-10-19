@@ -76,6 +76,7 @@ CREATE INDEX items_resource_equals_browser_destination_url ON items(h_resource_e
 CREATE INDEX items_browser_destination_url on items(browser_destination_url(128));
 CREATE INDEX items_browser_destination_url_updated on items(browser_destination_url_updated);
 CREATE INDEX items_browser_destination_status_code on items(browser_destination_status_code);
+CREATE INDEX items_naive_equals_browser_destination_url on items(h_naive_equals_browser_destination_url);
 
 CREATE INDEX h_resource_equals_naive_destination_url ON items(h_resource_equals_naive_destination_url);
 CREATE INDEX h_cookie_in_url ON items(h_cookie_in_url);

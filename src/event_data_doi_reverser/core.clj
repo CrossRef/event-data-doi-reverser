@@ -338,14 +338,14 @@
 
         count-naive-equals-browser (-> (k/select :items
                                       (k/where {:resource_url_domain_id domain-id
-                                                :h_resource_equals_browser_destination_url true})
+                                                :h_naive_equals_browser_destination_url true})
                                       (k/where (not= :naive_destination_url_updated nil))
                                       (k/where (not= :h_naive_equals_browser_destination_url nil))
                                       (k/aggregate (count :id) :cnt)) first :cnt)
 
         ; Will return null if there's no data.
         proportion-naive-equals-browser (when-not (zero? browser-url-item-count)
-                                                   (float (/ count-resource-equals-naive browser-url-item-count)))]
+                                                   (float (/ count-naive-equals-browser browser-url-item-count)))]
 
     ; (log/info "Domain " (:domain resource-url-domain) " proportion where Resource URL == naïve destination url:" proportion-resource-equals-naive)
     (k/update storage/resource-url-domains
