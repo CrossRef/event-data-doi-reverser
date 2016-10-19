@@ -144,12 +144,13 @@
                                  (k/where (not (nil? :resource_url)))
                                  (k/limit naive-sample-size))]
       (doseq [item sample-items]
-        (let [[destination-url has-error] (urls/resolve-link-naive (:resource_url item))]
-          (log/info "Sample" (:doi item) "=" (:resource_url item) " => " destination-url)
+        (let [[destination-url has-error] (urls/resolve-link-naive (:resource_url item))
+              clean-destination-url (when destination-url (urls/remove-session-id destination-url))]
+          (log/info "Sample" (:doi item) "=" (:resource_url item) " => " destination-url " cleaned: " clean-destination-url)
           (k/update
             storage/items
-            (k/set-fields {; destination-url can be nil on error
-                           :naive_destination_url destination-url
+            (k/set-fields {; clean-destination-url can be nil on error
+                           :naive_destination_url clean-destination-url
                            :naive_destination_url_updated (clj-time/now)
                            :error_code (when has-error error-resource-url-error-code)})
             (k/where {:id (:id item)})))))))
@@ -178,12 +179,13 @@
                                  (k/where (not (nil? :resource_url)))
                                  (k/limit naive-sample-size))]
       (doseq [item sample-items]
-        (let [[destination-url status-code] (urls/resolve-link-browser (:resource_url item))]
-          (log/info "Sample" (:doi item) "=" (:resource_url item) " => " destination-url)
+        (let [[destination-url status-code] (urls/resolve-link-browser (:resource_url item))
+              clean-destination-url (when destination-url (urls/remove-session-id destination-url))]
+          (log/info "Sample" (:doi item) "=" (:resource_url item) " => " destination-url " cleaned:" clean-destination-url)
           (k/update
             storage/items
-            (k/set-fields {; destination-url can be nil on error
-                           :browser_destination_url destination-url
+            (k/set-fields {; clean-destination-url can be nil on error
+                           :browser_destination_url clean-destination-url
                            :browser_destination_status_code status-code
                            :browser_destination_url_updated (clj-time/now)})
             (k/where {:id (:id item)})))))))

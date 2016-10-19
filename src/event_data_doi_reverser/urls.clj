@@ -45,3 +45,8 @@
           [last-url last-code])
         (catch Exception e (log/info "Exception processing browser response for:" url ", got response" (:out response) ", exception:" e ))))))
 
+
+(defn remove-session-id
+  "Remove a JSESSIONID from a URL"
+  [url]
+  (clojure.string/replace url #";(jsessionid|JSESSIONID)=[0-9a-zA-Z.]+$" ""))
