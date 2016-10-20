@@ -461,38 +461,6 @@
             (log/info "Lines:" @counter))
           (storage/ensure-item line))))))
 
-(defn lookup-item-from-resource-url
-  [url]
-  ; TODO look for canonical/primary DOI - follow links and check it's been vetted.
-  (first (k/select storage/items (k/where {:resource_url url}))))
-
-(defn try-reverse
-  [url]
-  (log/info "Look up" url)
-  (if-let [item (lookup-item-from-resource-url url)]
-     [:resource-url (:doi item)]
-     nil))
-
-(l/defresource server-reverse
- []
- :allowed-methods [:get]
- :available-media-types ["text/plain"]
- :malformed? (fn [ctx]
-              (let [q (get-in ctx [:request :params "q"])]
-                [(not q) {::q q}]))
- :exists? (fn [ctx]
-            (let [result (try-reverse (::q ctx))
-                  [method doi] result]
-                (log/info "Query" (::q ctx) "->" method doi)
-              (when result {::method method ::doi doi})))
- :handle-ok (fn [ctx]
-              (representation/ring-response
-                     {:status 200
-                      :headers {
-                        "X-Query" (::q ctx)
-                        "X-Method" (name (::method ctx))}
-                      :body (::doi ctx)})))
-
 (l/defresource server-counts
   []
   :allowed-methods [:get]
@@ -516,7 +484,16 @@
      :doi_prefixes {:total (-> (k/select :doi_prefixes (k/aggregate (count :id) :cnt)) first :cnt)}
      :resource-url-domains {:total (-> (k/select :resource_url_domains (k/aggregate (count :id) :cnt)) first :cnt)}}))
 
-(l/defresource server-domains-counts
+(l/defresource server-domains-counts-csv
+  []
+  :allowed-methods [:get]
+  :available-media-types ["text/csv"]
+  :handle-ok (fn [ctx]
+    ; TODO add count of samples.
+    (k/select storage/resource-url-domains)))
+
+
+(l/defresource server-domains-counts-json
   []
   :allowed-methods [:get]
   :available-media-types ["application/json"]
@@ -526,10 +503,8 @@
 
 (c/defroutes routes
   (c/GET "/status/counts" [] (server-counts))
-  (c/GET "/status/domains" [] (server-domains-counts))
-  (c/GET "/reverse" [] (server-reverse))
-  ;; backward compatibility
-  (c/GET "/guess-doi" [] (server-reverse)))
+  (c/GET "/status/domains" [] (server-domains-counts-json))
+  (c/GET "/status/domains.csv" [] (server-domains-counts-csv)))
 
 (def app
   (-> routes
