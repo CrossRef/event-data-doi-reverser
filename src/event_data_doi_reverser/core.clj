@@ -298,9 +298,10 @@
                     WHERE h_https IS NULL AND resource_url IS NOT NULL AND id >= ? AND ID <= ?;" [id (+ id update-page-size)]])
       
       (k/exec-raw ["UPDATE items
-                    SET h_looks_like_doi_resolver = (instr(resource_url, doi) > 0 and instr(naive_destination_url, doi) = 0 and  resource_url != naive_destination_url)
-                    WHERE h_looks_like_doi_resolver IS NULL AND resource_url IS NOT NULL AND id >= ? 
-                    AND ID <= ?;" [id (+ id update-page-size)]])
+                    SET h_looks_like_doi_resolver = (instr(resource_url, doi) > 0 and instr(naive_destination_url, doi) = 0 and resource_url != naive_destination_url)
+                    WHERE h_looks_like_doi_resolver IS NULL
+                    AND resource_url IS NOT NULL AND naive_destination_url IS NOT NULL
+                    AND id >= ?  AND ID <= ?;" [id (+ id update-page-size)]])
       
       (k/exec-raw ["UPDATE items
                     SET h_deleted = (resource_url = ?)
